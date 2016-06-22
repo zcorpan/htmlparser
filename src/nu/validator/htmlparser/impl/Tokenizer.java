@@ -228,6 +228,8 @@ public class Tokenizer implements Locator {
 
     public static final int COMMENT_LESSTHAN_BANG_DASH = 78;
 
+    public static final int COMMENT_LESSTHAN_BANG_DASH_DASH = 79;
+
     /**
      * Magic value for UTF-16 operations.
      */
@@ -2782,10 +2784,8 @@ public class Tokenizer implements Locator {
                         c = checkChar(buf, pos);
                         switch (c) {
                             case '-':
-                                errNestedComment();
-                                adjustDoubleHyphenAndAppendToStrBufAndErr(c, reportedConsecutiveHyphens);
-                                reportedConsecutiveHyphens = true;
-                                state = transition(state, Tokenizer.COMMENT_END, reconsume, pos);
+                                appendStrBuf(c);
+                                state = transition(state, Tokenizer.COMMENT_LESSTHAN_BANG_DASH_DASH, reconsume, pos);
                                 continue stateloop;
                             case '<':
                                 appendStrBuf(c);
@@ -2802,6 +2802,49 @@ public class Tokenizer implements Locator {
                                 // fall thru
                             default:
                                 appendStrBuf(c);
+                                state = transition(state, Tokenizer.COMMENT, reconsume, pos);
+                                continue stateloop;
+                        }
+                    }
+                case COMMENT_LESSTHAN_BANG_DASH_DASH:
+                    for (;;) {
+                        if (++pos == endPos) {
+                            break stateloop;
+                        }
+                        c = checkChar(buf, pos);
+                        switch (c) {
+                            case '>':
+                                appendStrBuf(c);
+                                emitComment(3, pos);
+                                state = transition(state, Tokenizer.DATA, reconsume, pos);
+                                continue stateloop;
+                            case '-':
+                                errNestedComment();
+                                adjustDoubleHyphenAndAppendToStrBufAndErr(c, reportedConsecutiveHyphens);
+                                reportedConsecutiveHyphens = true;
+                                state = transition(state, Tokenizer.COMMENT_END, reconsume, pos);
+                                continue stateloop;
+                            case '\r':
+                                errNestedComment();
+                                adjustDoubleHyphenAndAppendToStrBufAndErr(c, reportedConsecutiveHyphens);
+                                reportedConsecutiveHyphens = true;
+                                appendStrBufCarriageReturn();
+                                state = transition(state, Tokenizer.COMMENT, reconsume, pos);
+                                break stateloop;
+                            case '\n':
+                                errNestedComment();
+                                adjustDoubleHyphenAndAppendToStrBufAndErr(c, reportedConsecutiveHyphens);
+                                reportedConsecutiveHyphens = true;
+                                appendStrBufLineFeed();
+                                state = transition(state, Tokenizer.COMMENT, reconsume, pos);
+                                continue;
+                            case '\u0000':
+                                c = '\uFFFD';
+                                // fall thru
+                            default:
+                                errNestedComment();
+                                adjustDoubleHyphenAndAppendToStrBufAndErr(c, reportedConsecutiveHyphens);
+                                reportedConsecutiveHyphens = true;
                                 state = transition(state, Tokenizer.COMMENT, reconsume, pos);
                                 continue stateloop;
                         }
@@ -6274,6 +6317,7 @@ public class Tokenizer implements Locator {
                      */
                     break eofloop;
                 case COMMENT_END:
+                case COMMENT_LESSTHAN_BANG_DASH_DASH:
                     errEofInComment();
                     /* Emit the comment token. */
                     emitComment(2, 0);
